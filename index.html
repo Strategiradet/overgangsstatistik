@@ -1926,6 +1926,9 @@
       <p class="method-measure"><b>BRP per invånare</b> <span class="method-tag">SCB-tabell NR0105 (regionala räkenskaper)</span></p>
       <p>Bruttoregionalprodukt per invånare, i tusental kronor. <b>Finns endast på länsnivå</b>, eftersom regionala räkenskaper inte publiceras per kommun. På kommunnivå visas måttet som ej tillämpligt.</p>
 
+      <p class="method-measure"><b>Boende i mindre städer/landsbygd</b> <span class="method-tag">SKR:s kommungruppsindelning</span></p>
+      <p>Andelen av länets invånare som bor i kommuner som Sveriges Kommuner och Regioner klassar som "mindre städer/tätorter" eller "landsbygdskommuner". Måttet beskriver hur tätort- eller landsbygdspräglat ett län är och behandlas som en arbetsmarknadsvariabel i Sambandsanalysen och den automatiska analysen. Till skillnad från övriga mått hämtas det inte från SCB:s API vid körning utan är inbakat i verktyget som ett fast värde per län, utan tidsserie. Det <b>finns endast på länsnivå</b>; på kommunnivå visas det som ej tillämpligt. Andelen är ett strukturmått utan självklar bra/dålig-riktning, så det färgas neutralt i Regionprofiler.</p>
+
       <h3 id="m-berakning" class="method-h">Beräkningar och jämförelser</h3>
       <p><b>Rangordning och snitt.</b> I Regionprofiler rangordnas regionen mot övriga på samma nivå (län jämförs med län, kommun med kommun). Rangordningen sker för samma år för alla regioner, och vid lika värden delas placeringen. För arbetslöshet är låg nivå bättre, så rangordningen vänds där. Det "snitt" som visas är ett <b>ovägt medelvärde</b> av regionernas värden (varje region väger lika mycket oavsett storlek), inte det befolkningsvägda riksgenomsnittet. Därför står det uttryckligen "länssnitt" respektive "kommunsnitt".</p>
       <p><b>Riksreferens.</b> Trenddiagrammet i Regionprofiler visar regionens egna övergångskurvor som heldragna linjer och rikets motsvarande nivåer (1, 3 och 5 år) som streckade linjer, så att regionen kan ställas mot riksnivån över tid. Riket räknas inte in i läns- eller kommunrangordningen.</p>
@@ -1941,7 +1944,7 @@
       <p><b>Spårbarhet.</b> Källhänvisningen till underliggande SCB-tabell visas direkt under variabelvalet, så användaren ser källan redan vid valögonblicket och inte först när tabellen är framme. CSV-exporten innehåller ett metadata-block överst (variabel, form, kön, område, enhet, källa, exportdatum) följt av samtliga år, med länskolumn, kommunkod och kommunnamn först, så att filen är spårbar utan att man behöver återvända till appen.</p>
 
       <h3 id="m-monster" class="method-h">Automatisk analys</h3>
-      <p>Den automatiska analysen besvarar frågan "vilka arbetsmarknadsvariabler samvarierar med övergången till olika utbildningsformer?" automatiskt. För varje utbildningsform (högskola, yrkeshögskola, folkhögskola, konst/kultur samt totalen) beräknas Pearsons korrelationskoefficient mot var och en av arbetsmarknadsvariablerna, tvärs över regionerna. Antal studerande ingår inte (absoluta antal speglar befolkningsstorlek och ger skenbara samband), och BRP utgår på kommunnivå.</p>
+      <p>Den automatiska analysen besvarar frågan "vilka arbetsmarknadsvariabler samvarierar med övergången till olika utbildningsformer?" automatiskt. För varje utbildningsform (högskola, yrkeshögskola, folkhögskola, konst/kultur samt totalen) beräknas Pearsons korrelationskoefficient mot var och en av arbetsmarknadsvariablerna, tvärs över regionerna. Antal studerande ingår inte (absoluta antal speglar befolkningsstorlek och ger skenbara samband), och BRP och andelen boende i mindre städer/landsbygd utgår på kommunnivå eftersom de bara finns per län.</p>
       <p><b>Statistisk prövning.</b> Varje korrelation t-testas mot nollhypotesen r = 0 på 5 %-nivån (tvåsidigt). Endast säkerställda samband lyfts i texterna; alla korrelationer visas i diagrammen, där icke säkerställda staplar är bleka och märkta med °. Observera att antalet test är stort: på 5 %-nivån förväntas ungefär vart tjugonde test peka ut ett samband av ren slump, vilket analysen själv redovisar.</p>
       <p><b>Årtal.</b> Övergångarna avser senaste avgångsår med tillräckligt underlag och arbetsmarknadsmåtten senaste tillgängliga år; åren kan därför skilja sig något åt mellan måtten. Det är en medveten avvägning, eftersom nivåvariabler som utbildningsnivå och näringsstruktur är trögrörliga, men det innebär att analysen inte är ett exakt samtidigt tvärsnitt.</p>
       <p><b>Tolkning.</b> Korrelationerna mäter samvariation i ett tvärsnitt, inte orsakssamband. Ett starkt samband kan bero på bakomliggande faktorer (storstad/landsbygd är den klassiska), och på länsnivå (21 observationer) kan enstaka avvikande län driva resultatet. Kommunnivån ger fler observationer men osäkrare enskilda värden. Textsnuttarna genereras maskinellt ur siffrorna enligt fasta mallar och ersätter inte en analytikers bedömning.</p>
@@ -2297,6 +2300,52 @@ async function fetchBRP({regions}){
   ];
   const js = await apiPost(BRP_PATH, query);
   return jsonstatByRegionYear(js, "Region", "Tid");
+}
+
+/* Andel boende i mindre städer/tätorter och landsbygdskommuner — endast länsnivå.
+   Andelen av länets invånare som bor i kommuner som SKR klassar som "mindre
+   städer/tätorter" eller "landsbygdskommuner". Ett strukturmått som beskriver hur
+   tätort/landsbygd länet är. Till skillnad från övriga mått hämtas detta inte från
+   SCB:s API vid körning utan är inbakat direkt i verktyget (ett fast värde per län,
+   utan tidsserie). Regionkoder = SCB-standard (01, 03 …). Andel lagras i procent
+   (0–100) för att stämma med övriga andelsmått. Värdet saknas på kommunnivå. */
+const LANDSBYGD_LAN = {
+  "01": 2.66,   // Stockholms län
+  "03": 0,      // Uppsala län
+  "04": 43.22,  // Södermanlands län
+  "05": 4.69,   // Östergötlands län
+  "06": 41.01,  // Jönköpings län
+  "07": 28.01,  // Kronobergs län
+  "08": 53.97,  // Kalmar län
+  "09": 100,    // Gotlands län
+  "10": 89.03,  // Blekinge län
+  "12": 7.87,   // Skåne län
+  "13": 33.1,   // Hallands län
+  "14": 23.62,  // Västra Götalands län
+  "17": 39.17,  // Värmlands län
+  "18": 16.84,  // Örebro län
+  "19": 16.65,  // Västmanlands län
+  "20": 74.3,   // Dalarnas län
+  "21": 48.49,  // Gävleborgs län
+  "22": 51.99,  // Västernorrlands län
+  "23": 29.59,  // Jämtlands län
+  "24": 41.09,  // Västerbottens län
+  "25": 54.06   // Norrbottens län
+};
+// Året är ett fast referensår för det inbakade måttet. Övriga vyer hanterar
+// mått som {region:{år:värde}}; vi lägger värdet under detta år så att de
+// befintliga år-väljande funktionerna hittar det utan specialfall.
+const LANDSBYGD_YEAR = "2020";
+// Returnerar {länskod:{år:andel%}} för de efterfrågade regionerna. Kommuner (och
+// riket) saknar värde och utelämnas, precis som BRP. Inget API-anrop behövs.
+function fetchLandsbygd({regions}){
+  const out = {};
+  (regions || []).forEach(code => {
+    if(Object.prototype.hasOwnProperty.call(LANDSBYGD_LAN, code)){
+      out[code] = { [LANDSBYGD_YEAR]: LANDSBYGD_LAN[code] };
+    }
+  });
+  return out;
 }
 
 /* Generell hjälp: json-stat2 med en region- och en tid-dimension (och inga andra
@@ -4115,7 +4164,8 @@ const LABOUR_INDICATORS = [
   {key:"hogjobb",name:"Jobb som kräver högskoleutbildning",     status:"ready"},
   {key:"laagjobb",name:"Jobb utan krav på högskoleutbildning",  status:"ready"},
   {key:"brp",    name:"BRP per invånare",                       status:"ready"},
-  {key:"tjanst", name:"Sysselsatta i tjänstesektorn",          status:"ready"}
+  {key:"tjanst", name:"Sysselsatta i tjänstesektorn",          status:"ready"},
+  {key:"landsbygd",name:"Boende i mindre städer/landsbygd",     status:"ready"}
 ];
 
 /* =========================================================================
@@ -4276,7 +4326,7 @@ $("#profExport").addEventListener("click",()=>{
       ["Utbildningsform för övergångar:", transForm(profileForm).label],
       ["Innehåll:", "Senaste tillgängliga värde per arbetsmarknadsmått, samt övergångar till vidare studier som tidsserie över avgångsår."],
       ["Årtolkning:", "Övergångsmått (övergångar 1/3/5/10 år, antal examinerade) använder avgångsår, dvs vårterminens år då kullen tog examen från gymnasieskolan (t.ex. 2019 = läsåret 2018/2019). Arbetsmarknadsmått (sysselsättning, arbetslöshet, utbildningsnivå etc.) använder kalenderår."],
-      ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 · BRP NR0105 · Tjänstesektor AM0210F · Högskoleförberedande UF0542A"]
+      ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 · BRP NR0105 · Tjänstesektor AM0210F · Mindre städer/landsbygd SKR · Högskoleförberedande UF0542A"]
     ])
   ];
   rows.push(["Mått","Värde","År","Enhet","Register","SCB-tabell"]);
@@ -4292,6 +4342,7 @@ $("#profExport").addEventListener("click",()=>{
   m("Jobb utan krav på högskoleutbildning (SSYK 4–9)", P.hogLag, "%", "Yrkesregistret", "AM0208");
   if(isLan) m("BRP per invånare", P.brp, "tkr", "Regionala räkenskaper", "NR0105");
   m("Sysselsatta i tjänstesektorn (G–S exkl. K,O)", P.tjanst, "%", "BAS", "AM0210F");
+  if(isLan) m("Boende i mindre städer/landsbygd", P.landsbygd, "%", "SKR", "kommungrupp");
   // övergångstidsserie
   rows.push([]);
   rows.push(["Övergångar till vidare studier, tidsserie (avgångsår)"]);
@@ -4362,7 +4413,7 @@ async function loadProfile(){
   $("#profileOut").innerHTML = `<div class="msg"><div class="spinner"></div>Hämtar data för ${profileSel.name} och jämför med övriga ${lvlLabel}…</div>`;
   try{
     const FORM_KEYS = ["total","hogskola","yrkesh","folkh","konst"];
-    const [syss64, syss24, arbl64, arbl24, stud, utb, hogforb, yrkeShares, brp, tjanst, trans, transAll, ...formArr] = await Promise.all([
+    const [syss64, syss24, arbl64, arbl24, stud, utb, hogforb, yrkeShares, brp, tjanst, landsbygd, trans, transAll, ...formArr] = await Promise.all([
       fetchBAS({measure:"sysselsattningsgrad", regions:peerCodes, age:"20-64", sex:"1+2"}),
       fetchBAS({measure:"sysselsattningsgrad", regions:peerCodes, age:"20-24", sex:"1+2"}),
       fetchBAS({measure:"arbetsloshet",        regions:peerCodes, age:"20-64", sex:"1+2"}),
@@ -4373,6 +4424,7 @@ async function loadProfile(){
       fetchYrkeShares({regions:peerCodes}).catch(e=>{console.warn("Yrke:",e.message);return {};}),
       fetchBRP({regions:peerCodes}).catch(e=>{console.warn("BRP:",e.message);return {};}),
       fetchTjanst({regions:peerCodes}).catch(e=>{console.warn("Tjänst:",e.message);return {};}),
+      fetchLandsbygd({regions:peerCodes}),   // inbakat länsmått, ingen nätverkshämtning
       fetchTransitions({basRegion:code, sex:"1+2", form:profileForm}).catch(e=>{console.warn("Övergångar:",e.message);return null;}),
       fetchTransitionsMulti({basRegions:[...peerCodes,"00"], sex:"1+2", form:profileForm}).catch(e=>{console.warn("Övergångar (alla):",e.message);return {};}),
       // alla fem former för regionen, för formfördelningen
@@ -4388,7 +4440,7 @@ async function loadProfile(){
     });
     const formsData = {};
     FORM_KEYS.forEach((f,i)=>{ formsData[f]=formArr[i]; });
-    renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, trans, transAll, peers, formsData});
+    renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, landsbygd, trans, transAll, peers, formsData});
   }catch(err){
     $("#profileOut").innerHTML = `<div class="msg err"><strong>Kunde inte hämta arbetsmarknadsdata.</strong><code>${err.message.replace(/</g,"&lt;")}</code></div>`;
   }
@@ -4422,8 +4474,8 @@ function rankStats(dataByRegion, code, year, higherIsBetter){
   return {rank, n:arr.length, mean, value:vals[code], good};
 }
 
-function renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, trans, transAll, peers, formsData}){
-  PROFILE_EXPORT = {syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, trans, peers, name:profileSel.name, code:profileSel.code};
+function renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, landsbygd, trans, transAll, peers, formsData}){
+  PROFILE_EXPORT = {syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog, hogLag, brp, tjanst, landsbygd, trans, peers, name:profileSel.name, code:profileSel.code};
   $("#profExport").disabled = false;
   const code=profileSel.code;
   const fmtPct = v => v==null?"··":v.toLocaleString("sv-SE",{maximumFractionDigits:1})+" %";
@@ -4493,6 +4545,10 @@ function renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog,
       return rankCard("BRP per invånare", brp, {pct:false, higherIsBetter:true, extraNote:" · per invånare", register:"Regionala räkenskaper"});
     }
     if(ind.key==="tjanst") return rankCard("Sysselsatta i tjänstesektorn", tjanst, {higherIsBetter:true, extraNote:" · SNI G–S exkl. K och O", register:"BAS"});
+    if(ind.key==="landsbygd"){
+      if(!isLanCode(code)) return `<div class="prof-card pending"><span class="prof-card-name">${ind.name}</span><span class="prof-card-status">endast på länsnivå</span></div>`;
+      return rankCard("Boende i mindre städer/landsbygd", landsbygd, {neutral:true, extraNote:" · mindre städer/tätorter + landsbygdskommuner", register:"SKR"});
+    }
     return "";
   };
 
@@ -4595,7 +4651,7 @@ function renderProfile({syss64, syss24, arbl64, arbl24, stud, utb, hogforb, hog,
     <p class="prof-sub">Andel av de examinerade som påbörjat respektive form inom 3 år. Formerna överlappar (en person kan ha påbörjat flera) och summerar därför inte till totalen.</p>
     ${buildFormDistribution(formsData)}
     <h3 class="prof-h">Arbetsmarknad</h3>
-    <p class="prof-sub">Sysselsättning och arbetslöshet visas för 20–64 och 20–24 år. Antal studerande avser 20–64 år, utbildningsnivå 25–65 år. BRP redovisas endast på länsnivå.</p>
+    <p class="prof-sub">Sysselsättning och arbetslöshet visas för 20–64 och 20–24 år. Antal studerande avser 20–64 år, utbildningsnivå 25–65 år. BRP och andelen boende i mindre städer/landsbygd redovisas endast på länsnivå.</p>
     <div class="prof-grid">${LABOUR_INDICATORS.map(labCard).join("")}</div>`;
 
   // Rita trend-diagram för övergångar om Chart.js finns och vi har data
@@ -4666,6 +4722,7 @@ async function initCorrelateView(){
       <option value="m:hogforb">Högskoleförb. gymnasieprogram</option>
       <option value="m:brp">BRP per invånare</option>
       <option value="m:tjanst">Sysselsatta i tjänstesektorn</option>
+      <option value="m:landsbygd">Boende i mindre städer/landsbygd</option>
     </optgroup>`;
   $("#corrX").innerHTML = opts;
   $("#corrY").innerHTML = opts;
@@ -4707,8 +4764,8 @@ async function initCorrelateView(){
       // byte av nivå kräver ny hämtning; nollställ cache och uppmana att köra
       CORR_CACHE = { xKey:null, yKey:null, xData:null, yData:null };
       $("#correlateOut").innerHTML = `<div class="placeholder">Nivå: ${corrLevelWord(true)}. Klicka "Visa samband" för att hämta.</div>`;
-      // BRP är inte valbart på kommunnivå
-      document.querySelectorAll('#corrX option[value="m:brp"], #corrY option[value="m:brp"]').forEach(o=>{
+      // BRP och landsbygdsandelen är länsmått, ej valbara på kommunnivå
+      document.querySelectorAll('#corrX option[value="m:brp"], #corrY option[value="m:brp"], #corrX option[value="m:landsbygd"], #corrY option[value="m:landsbygd"]').forEach(o=>{
         o.disabled = (corrLevel!=="lan");
       });
     });
@@ -4806,6 +4863,7 @@ const METRICS = {
   "m:hogforb":             {label:"Högskoleförberedande gymnasieprogram (%)", unit:"%", reg:"Övergångsregistret", regFull:"Övergång gymnasieskola–eftergymnasial (SCB UF0542A)"},
   "m:brp":                 {label:"BRP per invånare (tkr)", unit:"tkr", reg:"Regionalräkenskaper", regFull:"Regionala räkenskaper (SCB NR0105)"},
   "m:tjanst":              {label:"Sysselsatta i tjänstesektorn (%)", unit:"%", reg:"BAS", regFull:"BAS, sysselsatta efter näringsgren (SCB AM0210F)"},
+  "m:landsbygd":           {label:"Boende i mindre städer/landsbygd (%)", unit:"%", reg:"SKR", regFull:"Andel boende i mindre städer/tätorter och landsbygdskommuner (SKR:s kommungruppsindelning)"},
   "t:a1":                  {label:"Andel övergångar inom 1 år (%)", unit:"%", reg:"Övergångsregistret", regFull:"Övergång gymnasieskola–eftergymnasial (SCB UF0542)"},
   "t:a3":                  {label:"Andel övergångar inom 3 år (%)", unit:"%", reg:"Övergångsregistret", regFull:"Övergång gymnasieskola–eftergymnasial (SCB UF0542)"},
   "t:a5":                  {label:"Andel övergångar inom 5 år (%)", unit:"%", reg:"Övergångsregistret", regFull:"Övergång gymnasieskola–eftergymnasial (SCB UF0542)"},
@@ -4848,6 +4906,10 @@ async function fetchMetricAllLan(metricKey, regions=null, level="lan", form="tot
   if(metricKey==="m:brp"){
     if(level!=="lan") return {};   // BRP finns bara på länsnivå
     return await fetchBRP({regions:codes}).catch(()=>({}));   // BRP är inte könsuppdelad
+  }
+  if(metricKey==="m:landsbygd"){
+    if(level!=="lan") return {};   // inbakat länsmått, saknas på kommunnivå
+    return fetchLandsbygd({regions:codes});   // inbakat, ej könsuppdelat
   }
   if(metricKey==="m:tjanst"){
     return await fetchTjanst({regions:codes}).catch(()=>({}));  // tjänstesektor: totalt
@@ -4909,6 +4971,10 @@ async function runCorrelation(){
   }
   if(corrLevel!=="lan" && (xKey==="m:brp"||yKey==="m:brp")){
     $("#correlateOut").innerHTML = `<div class="msg">BRP per invånare finns bara på länsnivå. Välj ett annat mått eller byt till län.</div>`;
+    return;
+  }
+  if(corrLevel!=="lan" && (xKey==="m:landsbygd"||yKey==="m:landsbygd")){
+    $("#correlateOut").innerHTML = `<div class="msg">Boende i mindre städer/landsbygd finns bara på länsnivå. Välj ett annat mått eller byt till län.</div>`;
     return;
   }
   const regs = corrRegions();
@@ -4989,6 +5055,7 @@ $("#corrExport").addEventListener("click",()=>{
     if(k==="m:hogforb") return "SCB UF0542A (högskoleförberedande gymnasieprogram, " + sexLbl.toLowerCase() + ")";
     if(k==="m:brp") return "SCB NR0105 (BRP per invånare, endast länsnivå, ej könsuppdelad)";
     if(k==="m:tjanst") return "SCB AM0210F (tjänstesektor SNI G–S exkl. K,O, ej könsuppdelad)";
+    if(k==="m:landsbygd") return "SKR:s kommungruppsindelning (andel boende i mindre städer/tätorter och landsbygdskommuner, endast länsnivå, ej könsuppdelad)";
     return "";
   };
   const scopeDesc = corrMode==="lan" ? "21 län"
@@ -5159,7 +5226,8 @@ const CMP_COLS = [
   {key:"m:hoglag", label:"Utan högsk.krav", hib:false, full:"Andel jobb i regionen utan krav på högskoleutbildning (SSYK-yrkesområde 4–9). En hög andel är inte i sig negativ utan speglar näringsstrukturen."},
   {key:"m:hogforb", label:"Högskoleförb.", hib:true,  full:"Andel av de gymnasieexaminerade som gått ett högskoleförberedande program"},
   {key:"m:brp", label:"BRP/inv.",         hib:true,  full:"Bruttoregionalprodukt per invånare, tusental kronor (endast länsnivå)"},
-  {key:"m:tjanst",label:"Tjänstesektor",   hib:true,  full:"Andel sysselsatta i tjänstesektorn (SNI-sektion G–S exklusive K och O)"}
+  {key:"m:tjanst",label:"Tjänstesektor",   hib:true,  full:"Andel sysselsatta i tjänstesektorn (SNI-sektion G–S exklusive K och O)"},
+  {key:"m:landsbygd",label:"Mindre städer/landsbygd", hib:true, full:"Andel av länets invånare som bor i kommuner klassade som mindre städer/tätorter eller landsbygdskommuner (endast länsnivå). Ett strukturmått utan självklar bra/dålig-riktning."}
 ];
 
 async function initCompareView(){
@@ -5304,7 +5372,7 @@ $("#cmpExport").addEventListener("click",()=>{
     ["Innehåll:", "Översiktsmatris över Sveriges 21 län. Varje rad är ett län; varje kolumn ett mått (senaste tillgängliga år). Kolumnerna för år anger vilket år värdet avser per län."],
     ["Utbildningsform för övergångar:", transForm(cmpForm).label],
     ["Årtolkning:", "Övergångsmått (övergångar 1/3/5/10 år, högskoleförberedande gymnasieprogram) använder avgångsår, dvs vårterminens år då kullen tog examen (t.ex. 2019 = läsåret 2018/2019). Arbetsmarknadsmått, BRP och tjänstesektor använder kalenderår."],
-    ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet/studerande AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 (SSYK 2+3 och 4–9) · Högskoleförberedande UF0542A · BRP NR0105 · Tjänstesektor AM0210F"],
+    ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet/studerande AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 (SSYK 2+3 och 4–9) · Högskoleförberedande UF0542A · BRP NR0105 · Tjänstesektor AM0210F · Mindre städer/landsbygd SKR"],
     ["Notera:", "Andelar anges som värde mellan 0 och 1 (markerade [0–1] i kolumnrubriken); BRP i tkr per invånare; studerande som antal."]
   ]);
   const cmpIsShare = key => (METRICS[key]?.unit === "%");
@@ -5577,7 +5645,8 @@ const PAT_METRICS = [
   {key:"m:hoglag",              short:"andelen jobb utan krav på högskoleutbildning", noun:"många jobb utan högskolekrav"},
   {key:"m:hogforb",             short:"andelen högskoleförberedande examinerade",   noun:"hög andel högskoleförberedande"},
   {key:"m:brp",                 short:"BRP per invånare",                  noun:"hög BRP"},
-  {key:"m:tjanst",              short:"tjänstesektorns andel",             noun:"stor tjänstesektor"}
+  {key:"m:tjanst",              short:"tjänstesektorns andel",             noun:"stor tjänstesektor"},
+  {key:"m:landsbygd",           short:"andelen boende i mindre städer och landsbygd", noun:"stor andel mindre orter och landsbygd"}
 ];
 const PAT_FORMS = [
   {key:"hogskola", label:"Högskola"},
@@ -5616,7 +5685,7 @@ async function _runPatternsInner(){
     : profileRegions.filter(r=>/^\d{4}$/.test(r.code)).map(r=>r.code);
   if(!codes.length){ out.innerHTML=`<div class="msg err">Regionlistan är inte laddad ännu, försök igen om en stund.</div>`; return; }
   const minN = level==="lan" ? 10 : 50;
-  const metrics = PAT_METRICS.filter(m=>!(level==="kommun" && m.key==="m:brp"));
+  const metrics = PAT_METRICS.filter(m=>!(level==="kommun" && (m.key==="m:brp" || m.key==="m:landsbygd")));
   out.innerHTML = `<div class="msg"><div class="spinner"></div>Startar analysen…</div>`;
   try{
     const metricData={};
@@ -5854,7 +5923,7 @@ function patBars(fc){
   svg+=`</svg>`;
   return svg+`<p class="pat-note">Gröna staplar = positivt samband, röda = negativt. Bleka staplar med ° är inte statistiskt säkerställda.</p>`;
 }
-const PAT_BAR_LABELS={"b:sysselsattningsgrad":"Sysselsättning","b:arbetsloshet":"Arbetslöshet","m:utb":"Utbildningsnivå","m:hog":"Högskolejobb","m:hoglag":"Jobb utan högsk.krav","m:hogforb":"Högskoleförb. gym.","m:brp":"BRP/invånare","m:tjanst":"Tjänstesektor"};
+const PAT_BAR_LABELS={"b:sysselsattningsgrad":"Sysselsättning","b:arbetsloshet":"Arbetslöshet","m:utb":"Utbildningsnivå","m:hog":"Högskolejobb","m:hoglag":"Jobb utan högsk.krav","m:hogforb":"Högskoleförb. gym.","m:brp":"BRP/invånare","m:tjanst":"Tjänstesektor","m:landsbygd":"Mindre städer/landsbygd"};
 const patBarLabel = key => PAT_BAR_LABELS[key]||key;
 
 $("#patExport").addEventListener("click",()=>{
@@ -5867,7 +5936,7 @@ $("#patExport").addEventListener("click",()=>{
     ["Regionnivå:", PAT_RESULT.level==="lan" ? "Län (21 observationer per korrelation)" : "Kommuner (upp till 290 observationer per korrelation)"],
     ["Uppföljningstid:", horizonTxt.charAt(0).toUpperCase()+horizonTxt.slice(1)],
     ["Statistisk prövning:", "Säkerställt avser 5 %-nivån (tvåsidigt t-test). Med många test förväntas några skenbart säkerställda samband av slump."],
-    ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 · Högskoleförberedande UF0542A · BRP NR0105 · Tjänstesektor AM0210F"],
+    ["Källor:", "Övergångar UF0542 · Sysselsättning/arbetslöshet AM0210D · Utbildningsnivå UF0506 · Yrkesregister AM0208 · Högskoleförberedande UF0542A · BRP NR0105 · Tjänstesektor AM0210F · Mindre städer/landsbygd SKR"],
     ["Årtolkning:", "Övergångsmått använder avgångsår, dvs vårterminens år då kullen tog examen från gymnasieskolan (t.ex. 2019 = läsåret 2018/2019). Arbetsmarknadsmått använder kalenderår. Avgångsår och måttår redovisas i separata kolumner per rad."],
     ["Notera:", "Korrelationer mäter samvariation i ett tvärsnitt, inte orsakssamband. Övergångarna avser senaste avgångsår med tillräckligt underlag; arbetsmarknadsmåtten senaste tillgängliga år. I könsfördjupningen är övergångsmåttet könsspecifikt; arbetsmarknadsmåtten redovisas dock alltid som totalvärden."]
   ]);
